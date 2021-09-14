@@ -1,0 +1,528 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE TypeOperators #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE RankNTypes #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-4"></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Canister</span><span>
+</span><span id="line-6"></span><span>    </span><span class="hs-special">(</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier">WasmState</span></a></span><span>
+</span><span id="line-7"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.html#parseCanister"><span class="hs-identifier">parseCanister</span></a></span><span>
+</span><span id="line-8"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier">CanisterModule</span></a></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span>
+</span><span id="line-9"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.html#InitFunc"><span class="hs-identifier">InitFunc</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.html#UpdateFunc"><span class="hs-identifier">UpdateFunc</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.html#QueryFunc"><span class="hs-identifier">QueryFunc</span></a></span><span>
+</span><span id="line-10"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Canister.html#asUpdate"><span class="hs-identifier">asUpdate</span></a></span><span>
+</span><span id="line-11"></span><span>    </span><span class="hs-special">)</span><span>
+</span><span id="line-12"></span><span>    </span><span class="hs-keyword">where</span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.Map</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">M</span></span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Data.List</span></span><span>
+</span><span id="line-16"></span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Types.html"><span class="hs-identifier">IC.Types</span></a></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html"><span class="hs-identifier">IC.Wasm.Winter</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Wasm.Winter.html#parseModule"><span class="hs-identifier">parseModule</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#exportedFunctions"><span class="hs-identifier">exportedFunctions</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier">Module</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-19"></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Purify.html"><span class="hs-identifier">IC.Purify</span></a></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Canister.Snapshot.html"><span class="hs-identifier">IC.Canister.Snapshot</span></a></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Canister.Imp.html"><span class="hs-identifier">IC.Canister.Imp</span></a></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Hash.html"><span class="hs-identifier">IC.Hash</span></a></span><span>
+</span><span id="line-24"></span><span>
+</span><span id="line-25"></span><span class="hs-comment">-- Here we can swap out the purification machinery</span><span>
+</span><span id="line-26"></span><span class="hs-keyword">type</span><span> </span><span id="WasmState"><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-var">WasmState</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Canister.Snapshot.html#CanisterSnapshot"><span class="hs-identifier hs-type">CanisterSnapshot</span></a></span><span>
+</span><span id="line-27"></span><span class="hs-comment">-- type WasmState = Replay ImpState</span><span>
+</span><span id="line-28"></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">type</span><span> </span><span id="InitFunc"><span class="annot"><a href="IC.Canister.html#InitFunc"><span class="hs-identifier hs-var">InitFunc</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-type">CanisterActions</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-30"></span><span class="hs-keyword">type</span><span> </span><span id="UpdateFunc"><span class="annot"><a href="IC.Canister.html#UpdateFunc"><span class="hs-identifier hs-var">UpdateFunc</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#UpdateResult"><span class="hs-identifier hs-type">UpdateResult</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-31"></span><span class="hs-keyword">type</span><span> </span><span id="QueryFunc"><span class="annot"><a href="IC.Canister.html#QueryFunc"><span class="hs-identifier hs-var">QueryFunc</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span><span>
+</span><span id="line-32"></span><span>
+</span><span id="line-33"></span><span class="hs-keyword">data</span><span> </span><span id="CanisterModule"><span class="annot"><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier hs-var">CanisterModule</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="CanisterModule"><span class="annot"><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier hs-var">CanisterModule</span></a></span></span><span>
+</span><span id="line-34"></span><span>  </span><span class="hs-special">{</span><span> </span><span id="raw_wasm"><span class="annot"><span class="annottext">CanisterModule -&gt; Blob
+</span><a href="IC.Canister.html#raw_wasm"><span class="hs-identifier hs-var hs-var">raw_wasm</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span>
+</span><span id="line-35"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="raw_wasm_hash"><span class="annot"><span class="annottext">CanisterModule -&gt; Blob
+</span><a href="IC.Canister.html#raw_wasm_hash"><span class="hs-identifier hs-var hs-var">raw_wasm_hash</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-comment">-- just caching, it&#8217;s worth it</span><span>
+</span><span id="line-36"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="init_method"><span class="annot"><span class="annottext">CanisterModule -&gt; InitFunc
+</span><a href="IC.Canister.html#init_method"><span class="hs-identifier hs-var hs-var">init_method</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.html#InitFunc"><span class="hs-identifier hs-type">InitFunc</span></a></span><span>
+</span><span id="line-37"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="update_methods"><span class="annot"><span class="annottext">CanisterModule
+-&gt; MethodName
+   &#8614; (EntityId -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Blob -&gt; UpdateFunc)
+</span><a href="IC.Canister.html#update_methods"><span class="hs-identifier hs-var hs-var">update_methods</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#MethodName"><span class="hs-identifier hs-type">MethodName</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#%21A6"><span class="hs-operator hs-type">&#8614;</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Responded"><span class="hs-identifier hs-type">Responded</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#UpdateFunc"><span class="hs-identifier hs-type">UpdateFunc</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-38"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="query_methods"><span class="annot"><span class="annottext">CanisterModule
+-&gt; MethodName &#8614; (EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc)
+</span><a href="IC.Canister.html#query_methods"><span class="hs-identifier hs-var hs-var">query_methods</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#MethodName"><span class="hs-identifier hs-type">MethodName</span></a></span><span> </span><span class="annot"><a href="IC.Types.html#%21A6"><span class="hs-operator hs-type">&#8614;</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#QueryFunc"><span class="hs-identifier hs-type">QueryFunc</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-39"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="callbacks"><span class="annot"><span class="annottext">CanisterModule
+-&gt; Callback
+-&gt; Env
+-&gt; Responded
+-&gt; Cycles
+-&gt; Response
+-&gt; Cycles
+-&gt; UpdateFunc
+</span><a href="IC.Canister.html#callbacks"><span class="hs-identifier hs-var hs-var">callbacks</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-type">Callback</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Responded"><span class="hs-identifier hs-type">Responded</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#UpdateFunc"><span class="hs-identifier hs-type">UpdateFunc</span></a></span><span>
+</span><span id="line-40"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="cleanup"><span class="annot"><span class="annottext">CanisterModule
+-&gt; WasmClosure -&gt; Env -&gt; WasmState -&gt; TrapOr (WasmState, ())
+</span><a href="IC.Canister.html#cleanup"><span class="hs-identifier hs-var hs-var">cleanup</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-41"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="pre_upgrade_method"><span class="annot"><span class="annottext">CanisterModule
+-&gt; WasmState -&gt; EntityId -&gt; Env -&gt; TrapOr (CanisterActions, Blob)
+</span><a href="IC.Canister.html#pre_upgrade_method"><span class="hs-identifier hs-var hs-var">pre_upgrade_method</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-type">CanisterActions</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-42"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="post_upgrade_method"><span class="annot"><span class="annottext">CanisterModule
+-&gt; EntityId
+-&gt; Env
+-&gt; Blob
+-&gt; Blob
+-&gt; TrapOr (WasmState, CanisterActions)
+</span><a href="IC.Canister.html#post_upgrade_method"><span class="hs-identifier hs-var hs-var">post_upgrade_method</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#CanisterActions"><span class="hs-identifier hs-type">CanisterActions</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-43"></span><span>  </span><span class="hs-special">,</span><span> </span><span id="inspect_message"><span class="annot"><span class="annottext">CanisterModule
+-&gt; MethodName -&gt; EntityId -&gt; Env -&gt; Blob -&gt; WasmState -&gt; TrapOr ()
+</span><a href="IC.Canister.html#inspect_message"><span class="hs-identifier hs-var hs-var">inspect_message</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#MethodName"><span class="hs-identifier hs-type">MethodName</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-44"></span><span>  </span><span class="hs-special">}</span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679322092"><span id="local-6989586621679322095"><span class="annot"><span class="hs-identifier hs-type">Show</span></span><span> </span><span class="annot"><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier hs-type">CanisterModule</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-47"></span><span>    </span><span id="local-6989586621679322090"><span class="annot"><span class="annottext">show :: CanisterModule -&gt; MethodName
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">show</span></span></span><span> </span><span class="hs-identifier">_</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="hs-string">&quot;CanisterModule{...}&quot;</span></span><span>
+</span><span id="line-48"></span><span>
+</span><span id="line-49"></span><span class="annot"><a href="IC.Canister.html#parseCanister"><span class="hs-identifier hs-type">parseCanister</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="annot"><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier hs-type">CanisterModule</span></a></span><span>
+</span><span id="line-50"></span><span id="parseCanister"><span class="annot"><span class="annottext">parseCanister :: Blob -&gt; Either MethodName CanisterModule
+</span><a href="IC.Canister.html#parseCanister"><span class="hs-identifier hs-var hs-var">parseCanister</span></a></span></span><span> </span><span id="local-6989586621679322087"><span class="annot"><span class="annottext">bytes :: Blob
+</span><a href="#local-6989586621679322087"><span class="hs-identifier hs-var">bytes</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-51"></span><span>  </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Either MethodName Module
+</span><a href="IC.Wasm.Winter.html#parseModule"><span class="hs-identifier hs-var">parseModule</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322087"><span class="hs-identifier hs-var">bytes</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-52"></span><span>    </span><span class="annot"><span class="hs-identifier hs-type">Left</span></span><span>  </span><span id="local-6989586621679322086"><span class="annot"><span class="annottext">err :: MethodName
+</span><a href="#local-6989586621679322086"><span class="hs-identifier hs-var">err</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; Either MethodName CanisterModule
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322086"><span class="hs-identifier hs-var">err</span></a></span><span>
+</span><span id="line-53"></span><span>    </span><span class="annot"><span class="hs-identifier hs-type">Right</span></span><span> </span><span id="local-6989586621679322085"><span class="annot"><span class="annottext">wasm_mod :: Module
+</span><a href="#local-6989586621679322085"><span class="hs-identifier hs-var">wasm_mod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">CanisterModule -&gt; Either MethodName CanisterModule
+forall a b. b -&gt; Either a b
+</span><span class="hs-identifier hs-var">Right</span></span><span> </span><span class="annot"><span class="annottext">(CanisterModule -&gt; Either MethodName CanisterModule)
+-&gt; CanisterModule -&gt; Either MethodName CanisterModule
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">CanisterModule :: Blob
+-&gt; Blob
+-&gt; InitFunc
+-&gt; (MethodName
+    &#8614; (EntityId -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Blob -&gt; UpdateFunc))
+-&gt; (MethodName &#8614; (EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc))
+-&gt; (Callback
+    -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Response -&gt; Cycles -&gt; UpdateFunc)
+-&gt; (WasmClosure -&gt; Env -&gt; WasmState -&gt; TrapOr (WasmState, ()))
+-&gt; (WasmState -&gt; EntityId -&gt; Env -&gt; TrapOr (CanisterActions, Blob))
+-&gt; (EntityId
+    -&gt; Env -&gt; Blob -&gt; Blob -&gt; TrapOr (WasmState, CanisterActions))
+-&gt; (MethodName
+    -&gt; EntityId -&gt; Env -&gt; Blob -&gt; WasmState -&gt; TrapOr ())
+-&gt; CanisterModule
+</span><a href="IC.Canister.html#CanisterModule"><span class="hs-identifier hs-type hs-type">CanisterModule</span></a></span><span>
+</span><span id="line-54"></span><span>      </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">raw_wasm :: Blob
+</span><a href="IC.Canister.html#raw_wasm"><span class="hs-identifier hs-var">raw_wasm</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322087"><span class="hs-identifier hs-var">bytes</span></a></span><span>
+</span><span id="line-55"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">raw_wasm_hash :: Blob
+</span><a href="IC.Canister.html#raw_wasm_hash"><span class="hs-identifier hs-var">raw_wasm_hash</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Blob
+</span><a href="IC.Hash.html#sha256"><span class="hs-identifier hs-var">sha256</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322087"><span class="hs-identifier hs-var">bytes</span></a></span><span>
+</span><span id="line-56"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">init_method :: InitFunc
+</span><a href="IC.Canister.html#init_method"><span class="hs-identifier hs-var">init_method</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322082"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322082"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322081"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322081"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322080"><span class="annot"><span class="annottext">dat :: Blob
+</span><a href="#local-6989586621679322080"><span class="hs-identifier hs-var">dat</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-57"></span><span>            </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Module -&gt; TrapOr WasmState
+</span><a href="IC.Canister.html#instantiate"><span class="hs-identifier hs-var">instantiate</span></a></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679322085"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-58"></span><span>              </span><span class="annot"><a href="IC.Types.html#Trap"><span class="hs-identifier hs-type">Trap</span></a></span><span> </span><span id="local-6989586621679322077"><span class="annot"><span class="annottext">err :: MethodName
+</span><a href="#local-6989586621679322077"><span class="hs-identifier hs-var">err</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; TrapOr (WasmState, CanisterActions)
+forall a. MethodName -&gt; TrapOr a
+</span><a href="IC.Types.html#Trap"><span class="hs-identifier hs-var">Trap</span></a></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322077"><span class="hs-identifier hs-var">err</span></a></span><span>
+</span><span id="line-59"></span><span>              </span><span class="annot"><a href="IC.Types.html#Return"><span class="hs-identifier hs-type">Return</span></a></span><span> </span><span id="local-6989586621679322075"><span class="annot"><span class="annottext">wasm_state0 :: WasmState
+</span><a href="#local-6989586621679322075"><span class="hs-identifier hs-var">wasm_state0</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-60"></span><span>                </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr CanisterActions)
+-&gt; TrapOr (WasmState, CanisterActions)
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322075"><span class="hs-identifier hs-var">wasm_state0</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">EntityId
+-&gt; Env -&gt; Blob -&gt; ImpState s -&gt; ST s (TrapOr CanisterActions)
+forall s.
+EntityId
+-&gt; Env -&gt; Blob -&gt; ImpState s -&gt; ST s (TrapOr CanisterActions)
+</span><a href="IC.Canister.Imp.html#rawInitialize"><span class="hs-identifier hs-var">rawInitialize</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322082"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322081"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322080"><span class="hs-identifier hs-var">dat</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-61"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">update_methods :: MethodName
+&#8614; (EntityId -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Blob -&gt; UpdateFunc)
+</span><a href="IC.Canister.html#update_methods"><span class="hs-identifier hs-var">update_methods</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(MethodName,
+  EntityId -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Blob -&gt; UpdateFunc)]
+-&gt; MethodName
+   &#8614; (EntityId -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Blob -&gt; UpdateFunc)
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><span class="hs-identifier hs-var">M.fromList</span></span><span>
+</span><span id="line-62"></span><span>        </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322071"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-63"></span><span>          </span><span class="hs-glyph">\</span><span id="local-6989586621679322070"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322070"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322069"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322069"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322068"><span class="annot"><span class="annottext">responded :: Responded
+</span><a href="#local-6989586621679322068"><span class="hs-identifier hs-var">responded</span></a></span></span><span> </span><span id="local-6989586621679322067"><span class="annot"><span class="annottext">cycles_available :: Cycles
+</span><a href="#local-6989586621679322067"><span class="hs-identifier hs-var">cycles_available</span></a></span></span><span> </span><span id="local-6989586621679322066"><span class="annot"><span class="annottext">dat :: Blob
+</span><a href="#local-6989586621679322066"><span class="hs-identifier hs-var">dat</span></a></span></span><span> </span><span id="local-6989586621679322065"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322065"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-64"></span><span>          </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr UpdateResult)
+-&gt; TrapOr (WasmState, UpdateResult)
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322065"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">MethodName
+-&gt; EntityId
+-&gt; Env
+-&gt; Responded
+-&gt; Cycles
+-&gt; Blob
+-&gt; ImpState s
+-&gt; ST s (TrapOr UpdateResult)
+forall s.
+MethodName
+-&gt; EntityId
+-&gt; Env
+-&gt; Responded
+-&gt; Cycles
+-&gt; Blob
+-&gt; ImpState s
+-&gt; ST s (TrapOr UpdateResult)
+</span><a href="IC.Canister.Imp.html#rawUpdate"><span class="hs-identifier hs-var">rawUpdate</span></a></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322071"><span class="hs-identifier hs-var">m</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322070"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322069"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Responded
+</span><a href="#local-6989586621679322068"><span class="hs-identifier hs-var">responded</span></a></span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><a href="#local-6989586621679322067"><span class="hs-identifier hs-var">cycles_available</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322066"><span class="hs-identifier hs-var">dat</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-65"></span><span>        </span><span class="hs-glyph">|</span><span> </span><span id="local-6989586621679322063"><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322063"><span class="hs-identifier hs-var">n</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Module -&gt; [MethodName]
+</span><a href="IC.Wasm.Winter.html#exportedFunctions"><span class="hs-identifier hs-var">exportedFunctions</span></a></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679322085"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span>
+</span><span id="line-66"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679322071"><span class="annot"><span class="annottext">m :: MethodName
+</span><a href="#local-6989586621679322071"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Maybe MethodName -&gt; [Maybe MethodName]
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(Maybe MethodName -&gt; [Maybe MethodName])
+-&gt; Maybe MethodName -&gt; [Maybe MethodName]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; MethodName -&gt; Maybe MethodName
+forall a. Eq a =&gt; [a] -&gt; [a] -&gt; Maybe [a]
+</span><span class="hs-identifier hs-var">stripPrefix</span></span><span> </span><span class="annot"><span class="hs-string">&quot;canister_update &quot;</span></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322063"><span class="hs-identifier hs-var">n</span></a></span><span>
+</span><span id="line-67"></span><span>        </span><span class="hs-special">]</span><span>
+</span><span id="line-68"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">query_methods :: MethodName &#8614; (EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc)
+</span><a href="IC.Canister.html#query_methods"><span class="hs-identifier hs-var">query_methods</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(MethodName, EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc)]
+-&gt; MethodName &#8614; (EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc)
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><span class="hs-identifier hs-var">M.fromList</span></span><span>
+</span><span id="line-69"></span><span>        </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322061"><span class="hs-identifier hs-var">m</span></a></span><span class="hs-special">,</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322060"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322060"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322059"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322059"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322058"><span class="annot"><span class="annottext">arg :: Blob
+</span><a href="#local-6989586621679322058"><span class="hs-identifier hs-var">arg</span></a></span></span><span> </span><span id="local-6989586621679322057"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322057"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-70"></span><span>            </span><span class="annot"><span class="annottext">(WasmState, Response) -&gt; Response
+forall a b. (a, b) -&gt; b
+</span><span class="hs-identifier hs-var">snd</span></span><span> </span><span class="annot"><span class="annottext">((WasmState, Response) -&gt; Response)
+-&gt; TrapOr (WasmState, Response) -&gt; TrapOr Response
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr Response)
+-&gt; TrapOr (WasmState, Response)
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322057"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">MethodName
+-&gt; EntityId -&gt; Env -&gt; Blob -&gt; ImpState s -&gt; ST s (TrapOr Response)
+forall s.
+MethodName
+-&gt; EntityId -&gt; Env -&gt; Blob -&gt; ImpState s -&gt; ST s (TrapOr Response)
+</span><a href="IC.Canister.Imp.html#rawQuery"><span class="hs-identifier hs-var">rawQuery</span></a></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322061"><span class="hs-identifier hs-var">m</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322060"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322059"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322058"><span class="hs-identifier hs-var">arg</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-71"></span><span>        </span><span class="hs-glyph">|</span><span> </span><span id="local-6989586621679322054"><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322054"><span class="hs-identifier hs-var">n</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Module -&gt; [MethodName]
+</span><a href="IC.Wasm.Winter.html#exportedFunctions"><span class="hs-identifier hs-var">exportedFunctions</span></a></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679322085"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span>
+</span><span id="line-72"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679322061"><span class="annot"><span class="annottext">m :: MethodName
+</span><a href="#local-6989586621679322061"><span class="hs-identifier hs-var">m</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Maybe MethodName -&gt; [Maybe MethodName]
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(Maybe MethodName -&gt; [Maybe MethodName])
+-&gt; Maybe MethodName -&gt; [Maybe MethodName]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; MethodName -&gt; Maybe MethodName
+forall a. Eq a =&gt; [a] -&gt; [a] -&gt; Maybe [a]
+</span><span class="hs-identifier hs-var">stripPrefix</span></span><span> </span><span class="annot"><span class="hs-string">&quot;canister_query &quot;</span></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322054"><span class="hs-identifier hs-var">n</span></a></span><span>
+</span><span id="line-73"></span><span>        </span><span class="hs-special">]</span><span>
+</span><span id="line-74"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">callbacks :: Callback
+-&gt; Env -&gt; Responded -&gt; Cycles -&gt; Response -&gt; Cycles -&gt; UpdateFunc
+</span><a href="IC.Canister.html#callbacks"><span class="hs-identifier hs-var">callbacks</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322053"><span class="annot"><span class="annottext">cb :: Callback
+</span><a href="#local-6989586621679322053"><span class="hs-identifier hs-var">cb</span></a></span></span><span> </span><span id="local-6989586621679322052"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322052"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322051"><span class="annot"><span class="annottext">responded :: Responded
+</span><a href="#local-6989586621679322051"><span class="hs-identifier hs-var">responded</span></a></span></span><span> </span><span id="local-6989586621679322050"><span class="annot"><span class="annottext">cycles_available :: Cycles
+</span><a href="#local-6989586621679322050"><span class="hs-identifier hs-var">cycles_available</span></a></span></span><span> </span><span id="local-6989586621679322049"><span class="annot"><span class="annottext">res :: Response
+</span><a href="#local-6989586621679322049"><span class="hs-identifier hs-var">res</span></a></span></span><span> </span><span id="local-6989586621679322048"><span class="annot"><span class="annottext">refund :: Cycles
+</span><a href="#local-6989586621679322048"><span class="hs-identifier hs-var">refund</span></a></span></span><span> </span><span id="local-6989586621679322047"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322047"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-75"></span><span>        </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr UpdateResult)
+-&gt; TrapOr (WasmState, UpdateResult)
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322047"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Callback
+-&gt; Env
+-&gt; Responded
+-&gt; Cycles
+-&gt; Response
+-&gt; Cycles
+-&gt; ImpState s
+-&gt; ST s (TrapOr UpdateResult)
+forall s.
+Callback
+-&gt; Env
+-&gt; Responded
+-&gt; Cycles
+-&gt; Response
+-&gt; Cycles
+-&gt; ImpState s
+-&gt; ST s (TrapOr UpdateResult)
+</span><a href="IC.Canister.Imp.html#rawCallback"><span class="hs-identifier hs-var">rawCallback</span></a></span><span> </span><span class="annot"><span class="annottext">Callback
+</span><a href="#local-6989586621679322053"><span class="hs-identifier hs-var">cb</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322052"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Responded
+</span><a href="#local-6989586621679322051"><span class="hs-identifier hs-var">responded</span></a></span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><a href="#local-6989586621679322050"><span class="hs-identifier hs-var">cycles_available</span></a></span><span> </span><span class="annot"><span class="annottext">Response
+</span><a href="#local-6989586621679322049"><span class="hs-identifier hs-var">res</span></a></span><span> </span><span class="annot"><span class="annottext">Cycles
+</span><a href="#local-6989586621679322048"><span class="hs-identifier hs-var">refund</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-76"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">cleanup :: WasmClosure -&gt; Env -&gt; WasmState -&gt; TrapOr (WasmState, ())
+</span><a href="IC.Canister.html#cleanup"><span class="hs-identifier hs-var">cleanup</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322045"><span class="annot"><span class="annottext">cb :: WasmClosure
+</span><a href="#local-6989586621679322045"><span class="hs-identifier hs-var">cb</span></a></span></span><span> </span><span id="local-6989586621679322044"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322044"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322043"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322043"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-77"></span><span>        </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr ()) -&gt; TrapOr (WasmState, ())
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322043"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">WasmClosure -&gt; Env -&gt; ImpState s -&gt; ST s (TrapOr ())
+forall s. WasmClosure -&gt; Env -&gt; ImpState s -&gt; ST s (TrapOr ())
+</span><a href="IC.Canister.Imp.html#rawCleanup"><span class="hs-identifier hs-var">rawCleanup</span></a></span><span> </span><span class="annot"><span class="annottext">WasmClosure
+</span><a href="#local-6989586621679322045"><span class="hs-identifier hs-var">cb</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322044"><span class="hs-identifier hs-var">env</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-78"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">pre_upgrade_method :: WasmState -&gt; EntityId -&gt; Env -&gt; TrapOr (CanisterActions, Blob)
+</span><a href="IC.Canister.html#pre_upgrade_method"><span class="hs-identifier hs-var">pre_upgrade_method</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322041"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322041"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span> </span><span id="local-6989586621679322040"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322040"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322039"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322039"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-79"></span><span>            </span><span class="annot"><span class="annottext">(WasmState, (CanisterActions, Blob)) -&gt; (CanisterActions, Blob)
+forall a b. (a, b) -&gt; b
+</span><span class="hs-identifier hs-var">snd</span></span><span> </span><span class="annot"><span class="annottext">((WasmState, (CanisterActions, Blob)) -&gt; (CanisterActions, Blob))
+-&gt; TrapOr (WasmState, (CanisterActions, Blob))
+-&gt; TrapOr (CanisterActions, Blob)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr (CanisterActions, Blob))
+-&gt; TrapOr (WasmState, (CanisterActions, Blob))
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322041"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">EntityId
+-&gt; Env -&gt; ImpState s -&gt; ST s (TrapOr (CanisterActions, Blob))
+forall s.
+EntityId
+-&gt; Env -&gt; ImpState s -&gt; ST s (TrapOr (CanisterActions, Blob))
+</span><a href="IC.Canister.Imp.html#rawPreUpgrade"><span class="hs-identifier hs-var">rawPreUpgrade</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322040"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322039"><span class="hs-identifier hs-var">env</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-80"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">post_upgrade_method :: EntityId
+-&gt; Env -&gt; Blob -&gt; Blob -&gt; TrapOr (WasmState, CanisterActions)
+</span><a href="IC.Canister.html#post_upgrade_method"><span class="hs-identifier hs-var">post_upgrade_method</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322037"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322037"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322036"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322036"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322035"><span class="annot"><span class="annottext">mem :: Blob
+</span><a href="#local-6989586621679322035"><span class="hs-identifier hs-var">mem</span></a></span></span><span> </span><span id="local-6989586621679322034"><span class="annot"><span class="annottext">dat :: Blob
+</span><a href="#local-6989586621679322034"><span class="hs-identifier hs-var">dat</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-81"></span><span>            </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Module -&gt; TrapOr WasmState
+</span><a href="IC.Canister.html#instantiate"><span class="hs-identifier hs-var">instantiate</span></a></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679322085"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-82"></span><span>              </span><span class="annot"><a href="IC.Types.html#Trap"><span class="hs-identifier hs-type">Trap</span></a></span><span> </span><span id="local-6989586621679322033"><span class="annot"><span class="annottext">err :: MethodName
+</span><a href="#local-6989586621679322033"><span class="hs-identifier hs-var">err</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; TrapOr (WasmState, CanisterActions)
+forall a. MethodName -&gt; TrapOr a
+</span><a href="IC.Types.html#Trap"><span class="hs-identifier hs-var">Trap</span></a></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322033"><span class="hs-identifier hs-var">err</span></a></span><span>
+</span><span id="line-83"></span><span>              </span><span class="annot"><a href="IC.Types.html#Return"><span class="hs-identifier hs-type">Return</span></a></span><span> </span><span id="local-6989586621679322032"><span class="annot"><span class="annottext">wasm_state0 :: WasmState
+</span><a href="#local-6989586621679322032"><span class="hs-identifier hs-var">wasm_state0</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-84"></span><span>                </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr CanisterActions)
+-&gt; TrapOr (WasmState, CanisterActions)
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322032"><span class="hs-identifier hs-var">wasm_state0</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">EntityId
+-&gt; Env
+-&gt; Blob
+-&gt; Blob
+-&gt; ImpState s
+-&gt; ST s (TrapOr CanisterActions)
+forall s.
+EntityId
+-&gt; Env
+-&gt; Blob
+-&gt; Blob
+-&gt; ImpState s
+-&gt; ST s (TrapOr CanisterActions)
+</span><a href="IC.Canister.Imp.html#rawPostUpgrade"><span class="hs-identifier hs-var">rawPostUpgrade</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322037"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322036"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322035"><span class="hs-identifier hs-var">mem</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322034"><span class="hs-identifier hs-var">dat</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-85"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">inspect_message :: MethodName -&gt; EntityId -&gt; Env -&gt; Blob -&gt; WasmState -&gt; TrapOr ()
+</span><a href="IC.Canister.html#inspect_message"><span class="hs-identifier hs-var">inspect_message</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679322030"><span class="annot"><span class="annottext">method_name :: MethodName
+</span><a href="#local-6989586621679322030"><span class="hs-identifier hs-var">method_name</span></a></span></span><span> </span><span id="local-6989586621679322029"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322029"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322028"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322028"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621679322027"><span class="annot"><span class="annottext">arg :: Blob
+</span><a href="#local-6989586621679322027"><span class="hs-identifier hs-var">arg</span></a></span></span><span> </span><span id="local-6989586621679322026"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322026"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-86"></span><span>            </span><span class="annot"><span class="annottext">(WasmState, ()) -&gt; ()
+forall a b. (a, b) -&gt; b
+</span><span class="hs-identifier hs-var">snd</span></span><span> </span><span class="annot"><span class="annottext">((WasmState, ()) -&gt; ()) -&gt; TrapOr (WasmState, ()) -&gt; TrapOr ()
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">WasmState
+-&gt; CanisterEntryPoint (TrapOr ()) -&gt; TrapOr (WasmState, ())
+forall r.
+WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var">invoke</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322026"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">MethodName
+-&gt; EntityId -&gt; Env -&gt; Blob -&gt; ImpState s -&gt; ST s (TrapOr ())
+forall s.
+MethodName
+-&gt; EntityId -&gt; Env -&gt; Blob -&gt; ImpState s -&gt; ST s (TrapOr ())
+</span><a href="IC.Canister.Imp.html#rawInspectMessage"><span class="hs-identifier hs-var">rawInspectMessage</span></a></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322030"><span class="hs-identifier hs-var">method_name</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322029"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322028"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322027"><span class="hs-identifier hs-var">arg</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-87"></span><span>      </span><span class="hs-special">}</span><span>
+</span><span id="line-88"></span><span>
+</span><span id="line-89"></span><span class="annot"><a href="IC.Canister.html#instantiate"><span class="hs-identifier hs-type">instantiate</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html#Module"><span class="hs-identifier hs-type">Module</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span>
+</span><span id="line-90"></span><span id="instantiate"><span class="annot"><span class="annottext">instantiate :: Module -&gt; TrapOr WasmState
+</span><a href="IC.Canister.html#instantiate"><span class="hs-identifier hs-var hs-var">instantiate</span></a></span></span><span> </span><span id="local-6989586621679322024"><span class="annot"><span class="annottext">wasm_mod :: Module
+</span><a href="#local-6989586621679322024"><span class="hs-identifier hs-var">wasm_mod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-91"></span><span>  </span><span class="annot"><span class="annottext">(MethodName -&gt; TrapOr WasmState)
+-&gt; (WasmState -&gt; TrapOr WasmState)
+-&gt; Either MethodName WasmState
+-&gt; TrapOr WasmState
+forall a c b. (a -&gt; c) -&gt; (b -&gt; c) -&gt; Either a b -&gt; c
+</span><span class="hs-identifier hs-var">either</span></span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; TrapOr WasmState
+forall a. MethodName -&gt; TrapOr a
+</span><a href="IC.Types.html#Trap"><span class="hs-identifier hs-var">Trap</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState -&gt; TrapOr WasmState
+forall a. a -&gt; TrapOr a
+</span><a href="IC.Types.html#Return"><span class="hs-identifier hs-var">Return</span></a></span><span> </span><span class="annot"><span class="annottext">(Either MethodName WasmState -&gt; TrapOr WasmState)
+-&gt; Either MethodName WasmState -&gt; TrapOr WasmState
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">((), Either MethodName WasmState) -&gt; Either MethodName WasmState
+forall a b. (a, b) -&gt; b
+</span><span class="hs-identifier hs-var">snd</span></span><span> </span><span class="annot"><span class="annottext">(((), Either MethodName WasmState) -&gt; Either MethodName WasmState)
+-&gt; ((), Either MethodName WasmState) -&gt; Either MethodName WasmState
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">(forall s. ST s ((), Either MethodName (ImpState s)))
+-&gt; ((), Either MethodName WasmState)
+forall (i :: * -&gt; *) a b c.
+Purify i a =&gt;
+(forall s. ST s (b, Either c (i s))) -&gt; (b, Either c a)
+</span><a href="IC.Purify.html#createMaybe"><span class="hs-identifier hs-var">createMaybe</span></a></span><span> </span><span class="annot"><span class="annottext">((forall s. ST s ((), Either MethodName (ImpState s)))
+ -&gt; ((), Either MethodName WasmState))
+-&gt; (forall s. ST s ((), Either MethodName (ImpState s)))
+-&gt; ((), Either MethodName WasmState)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-92"></span><span>    </span><span class="annot"><span class="annottext">Module -&gt; ST s (TrapOr (ImpState s))
+forall s. Module -&gt; ST s (TrapOr (ImpState s))
+</span><a href="IC.Canister.Imp.html#rawInstantiate"><span class="hs-identifier hs-var">rawInstantiate</span></a></span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679322024"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span> </span><span class="annot"><span class="annottext">ST s (TrapOr (ImpState s))
+-&gt; (TrapOr (ImpState s)
+    -&gt; ST s ((), Either MethodName (ImpState s)))
+-&gt; ST s ((), Either MethodName (ImpState s))
+forall (m :: * -&gt; *) a b. Monad m =&gt; m a -&gt; (a -&gt; m b) -&gt; m b
+</span><span class="hs-operator hs-var">&gt;&gt;=</span></span><span> </span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span>
+</span><span id="line-93"></span><span>      </span><span class="annot"><a href="IC.Types.html#Trap"><span class="hs-identifier hs-type">Trap</span></a></span><span> </span><span id="local-6989586621679322020"><span class="annot"><span class="annottext">err :: MethodName
+</span><a href="#local-6989586621679322020"><span class="hs-identifier hs-var">err</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">((), Either MethodName (ImpState s))
+-&gt; ST s ((), Either MethodName (ImpState s))
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; Either MethodName (ImpState s)
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322020"><span class="hs-identifier hs-var">err</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-94"></span><span>      </span><span class="annot"><a href="IC.Types.html#Return"><span class="hs-identifier hs-type">Return</span></a></span><span> </span><span id="local-6989586621679322019"><span class="annot"><span class="annottext">rs :: ImpState s
+</span><a href="#local-6989586621679322019"><span class="hs-identifier hs-var">rs</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">((), Either MethodName (ImpState s))
+-&gt; ST s ((), Either MethodName (ImpState s))
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">ImpState s -&gt; Either MethodName (ImpState s)
+forall a b. b -&gt; Either a b
+</span><span class="hs-identifier hs-var">Right</span></span><span> </span><span class="annot"><span class="annottext">ImpState s
+</span><a href="#local-6989586621679322019"><span class="hs-identifier hs-var">rs</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-95"></span><span>
+</span><span id="line-96"></span><span id="local-6989586621679322164"><span class="annot"><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-type">invoke</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.Imp.html#CanisterEntryPoint"><span class="hs-identifier hs-type">CanisterEntryPoint</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679322164"><span class="hs-identifier hs-type">r</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#TrapOr"><span class="hs-identifier hs-type">TrapOr</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Canister.html#WasmState"><span class="hs-identifier hs-type">WasmState</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="#local-6989586621679322164"><span class="hs-identifier hs-type">r</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-97"></span><span id="invoke"><span class="annot"><span class="annottext">invoke :: WasmState -&gt; CanisterEntryPoint (TrapOr r) -&gt; TrapOr (WasmState, r)
+</span><a href="IC.Canister.html#invoke"><span class="hs-identifier hs-var hs-var">invoke</span></a></span></span><span> </span><span id="local-6989586621679322018"><span class="annot"><span class="annottext">s :: WasmState
+</span><a href="#local-6989586621679322018"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span id="local-6989586621679322017"><span class="annot"><span class="annottext">f :: CanisterEntryPoint (TrapOr r)
+</span><a href="#local-6989586621679322017"><span class="hs-identifier hs-var">f</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-98"></span><span>  </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">CanisterEntryPoint (TrapOr r) -&gt; WasmState -&gt; (WasmState, TrapOr r)
+forall (i :: * -&gt; *) a b.
+Purify i a =&gt;
+(forall s. i s -&gt; ST s b) -&gt; a -&gt; (a, b)
+</span><a href="IC.Purify.html#perform"><span class="hs-identifier hs-var">perform</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterEntryPoint (TrapOr r)
+</span><a href="#local-6989586621679322017"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322018"><span class="hs-identifier hs-var">s</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-99"></span><span>    </span><span class="hs-special">(</span><span class="hs-identifier">_</span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#Trap"><span class="hs-identifier hs-type">Trap</span></a></span><span> </span><span id="local-6989586621679322015"><span class="annot"><span class="annottext">msg :: MethodName
+</span><a href="#local-6989586621679322015"><span class="hs-identifier hs-var">msg</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; TrapOr (WasmState, r)
+forall a. MethodName -&gt; TrapOr a
+</span><a href="IC.Types.html#Trap"><span class="hs-identifier hs-var">Trap</span></a></span><span> </span><span class="annot"><span class="annottext">MethodName
+</span><a href="#local-6989586621679322015"><span class="hs-identifier hs-var">msg</span></a></span><span>
+</span><span id="line-100"></span><span>    </span><span class="hs-special">(</span><span id="local-6989586621679322014"><span class="annot"><span class="annottext">s' :: WasmState
+</span><a href="#local-6989586621679322014"><span class="hs-identifier hs-var">s'</span></a></span></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="IC.Types.html#Return"><span class="hs-identifier hs-type">Return</span></a></span><span> </span><span id="local-6989586621679322013"><span class="annot"><span class="annottext">r :: r
+</span><a href="#local-6989586621679322013"><span class="hs-identifier hs-var">r</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">(WasmState, r) -&gt; TrapOr (WasmState, r)
+forall a. a -&gt; TrapOr a
+</span><a href="IC.Types.html#Return"><span class="hs-identifier hs-var">Return</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322014"><span class="hs-identifier hs-var">s'</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">r
+</span><a href="#local-6989586621679322013"><span class="hs-identifier hs-var">r</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-101"></span><span>
+</span><span id="line-102"></span><span class="hs-comment">-- | Turns a query function into an update function</span><span>
+</span><span id="line-103"></span><span class="annot"><a href="IC.Canister.html#asUpdate"><span class="hs-identifier hs-type">asUpdate</span></a></span><span> </span><span class="hs-glyph">::</span><span>
+</span><span id="line-104"></span><span>  </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#QueryFunc"><span class="hs-identifier hs-type">QueryFunc</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-105"></span><span>  </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Env"><span class="hs-identifier hs-type">Env</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Responded"><span class="hs-identifier hs-type">Responded</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Cycles"><span class="hs-identifier hs-type">Cycles</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Types.html#Blob"><span class="hs-identifier hs-type">Blob</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="IC.Canister.html#UpdateFunc"><span class="hs-identifier hs-type">UpdateFunc</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-106"></span><span id="asUpdate"><span class="annot"><span class="annottext">asUpdate :: (EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc)
+-&gt; EntityId -&gt; Env -&gt; Responded -&gt; Cycles -&gt; Blob -&gt; UpdateFunc
+</span><a href="IC.Canister.html#asUpdate"><span class="hs-identifier hs-var hs-var">asUpdate</span></a></span></span><span> </span><span id="local-6989586621679322012"><span class="annot"><span class="annottext">f :: EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc
+</span><a href="#local-6989586621679322012"><span class="hs-identifier hs-var">f</span></a></span></span><span> </span><span id="local-6989586621679322011"><span class="annot"><span class="annottext">caller :: EntityId
+</span><a href="#local-6989586621679322011"><span class="hs-identifier hs-var">caller</span></a></span></span><span> </span><span id="local-6989586621679322010"><span class="annot"><span class="annottext">env :: Env
+</span><a href="#local-6989586621679322010"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Types.html#Responded"><span class="hs-identifier hs-type">Responded</span></a></span><span> </span><span id="local-6989586621679322008"><span class="annot"><span class="annottext">responded :: Bool
+</span><a href="#local-6989586621679322008"><span class="hs-identifier hs-var">responded</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621679322007"><span class="annot"><span class="annottext">_cycles_available :: Cycles
+</span><a href="#local-6989586621679322007"><span class="hs-identifier hs-var">_cycles_available</span></a></span></span><span> </span><span id="local-6989586621679322006"><span class="annot"><span class="annottext">dat :: Blob
+</span><a href="#local-6989586621679322006"><span class="hs-identifier hs-var">dat</span></a></span></span><span> </span><span id="local-6989586621679322005"><span class="annot"><span class="annottext">wasm_state :: WasmState
+</span><a href="#local-6989586621679322005"><span class="hs-identifier hs-var">wasm_state</span></a></span></span><span>
+</span><span id="line-107"></span><span>  </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621679322008"><span class="hs-identifier hs-var">responded</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">MethodName -&gt; TrapOr (WasmState, UpdateResult)
+forall a. HasCallStack =&gt; MethodName -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="hs-string">&quot;asUpdate: responded == True&quot;</span></span><span>
+</span><span id="line-108"></span><span>  </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><span class="hs-identifier hs-var">otherwise</span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-109"></span><span>    </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621679322003"><span class="annot"><span class="annottext">res :: Response
+</span><a href="#local-6989586621679322003"><span class="hs-identifier hs-var">res</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322005"><span class="hs-identifier hs-var">wasm_state</span></a></span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CallActions
+</span><a href="IC.Types.html#noCallActions"><span class="hs-identifier hs-var">noCallActions</span></a></span><span> </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">ca_response :: Maybe Response
+</span><a href="IC.Types.html#ca_response"><span class="hs-identifier hs-var">ca_response</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Response -&gt; Maybe Response
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">Response
+</span><a href="#local-6989586621679322003"><span class="hs-identifier hs-var">res</span></a></span><span> </span><span class="hs-special">}</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">CanisterActions
+</span><a href="IC.Types.html#noCanisterActions"><span class="hs-identifier hs-var">noCanisterActions</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Response -&gt; (WasmState, UpdateResult))
+-&gt; TrapOr Response -&gt; TrapOr (WasmState, UpdateResult)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span>
+</span><span id="line-110"></span><span>    </span><span class="annot"><span class="annottext">EntityId -&gt; Env -&gt; Blob -&gt; QueryFunc
+</span><a href="#local-6989586621679322012"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="annot"><span class="annottext">EntityId
+</span><a href="#local-6989586621679322011"><span class="hs-identifier hs-var">caller</span></a></span><span> </span><span class="annot"><span class="annottext">Env
+</span><a href="#local-6989586621679322010"><span class="hs-identifier hs-var">env</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679322006"><span class="hs-identifier hs-var">dat</span></a></span><span> </span><span class="annot"><span class="annottext">WasmState
+</span><a href="#local-6989586621679322005"><span class="hs-identifier hs-var">wasm_state</span></a></span><span>
+</span><span id="line-111"></span></pre></body></html>

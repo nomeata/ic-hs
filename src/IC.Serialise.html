@@ -1,0 +1,225 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE StandaloneDeriving #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE ConstraintKinds #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE DeriveGeneric #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE TypeSynonymInstances  #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE GeneralizedNewtypeDeriving  #-}</span><span>
+</span><span id="line-6"></span><span class="hs-pragma">{-# OPTIONS_GHC -Wno-orphans #-}</span><span>
+</span><span id="line-7"></span><span class="hs-comment">{- |
+This module defines Serialise instances of the IC state.
+
+We put them into their own module, despite the usual advise against orphan
+instances, to emphasize that these are not part of the `IC.Ref` module with its
+&#8220;reference implementation&#8221; status.
+
+Also, orphan instances are kinda ok in applications.
+
+-}</span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">IC.Serialise</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-19"></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Codec.Serialise</span></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">GHC.Generics</span></span><span>
+</span><span id="line-22"></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.html"><span class="hs-identifier">IC.Wasm.Winter</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">W</span></span><span>
+</span><span id="line-24"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Control.Monad.Random.Lazy</span></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">System.Random.Internal</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">StdGen</span></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-26"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">System.Random.SplitMix</span></span><span>
+</span><span id="line-27"></span><span>
+</span><span id="line-28"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Types.html"><span class="hs-identifier">IC.Types</span></a></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html"><span class="hs-identifier">IC.Wasm.Winter.Persist</span></a></span><span>
+</span><span id="line-30"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Purify.html"><span class="hs-identifier">IC.Purify</span></a></span><span>
+</span><span id="line-31"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Canister.Snapshot.html"><span class="hs-identifier">IC.Canister.Snapshot</span></a></span><span>
+</span><span id="line-32"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Canister.html"><span class="hs-identifier">IC.Canister</span></a></span><span>
+</span><span id="line-33"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Ref.html"><span class="hs-identifier">IC.Ref</span></a></span><span>
+</span><span id="line-34"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="IC.Crypto.html"><span class="hs-identifier">IC.Crypto</span></a></span><span>
+</span><span id="line-35"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="IC.Crypto.BLS.html"><span class="hs-identifier">IC.Crypto.BLS</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">BLS</span></span><span>
+</span><span id="line-36"></span><span>
+</span><span id="line-37"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323843"><span id="local-6989586621679323845"><span id="local-6989586621679323847"><span id="local-6989586621679323849"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">W.Value</span></span></span></span></span></span><span>
+</span><span id="line-38"></span><span>
+</span><span id="line-39"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span><span>
+</span><span id="line-40"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323831"><span id="local-6989586621679323833"><span id="local-6989586621679323835"><span id="local-6989586621679323837"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#Timestamp"><span class="hs-identifier hs-type">Timestamp</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-41"></span><span>
+</span><span id="line-42"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Responded"><span class="hs-identifier hs-type">Responded</span></a></span><span>
+</span><span id="line-43"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323821"><span id="local-6989586621679323823"><span id="local-6989586621679323825"><span id="local-6989586621679323827"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#Responded"><span class="hs-identifier hs-type">Responded</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-44"></span><span>
+</span><span id="line-45"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-type">RejectCode</span></a></span><span>
+</span><span id="line-46"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323811"><span id="local-6989586621679323813"><span id="local-6989586621679323815"><span id="local-6989586621679323817"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#RejectCode"><span class="hs-identifier hs-type">RejectCode</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-47"></span><span>
+</span><span id="line-48"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span><span>
+</span><span id="line-49"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323801"><span id="local-6989586621679323803"><span id="local-6989586621679323805"><span id="local-6989586621679323807"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#Response"><span class="hs-identifier hs-type">Response</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-50"></span><span>
+</span><span id="line-51"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span><span>
+</span><span id="line-52"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323791"><span id="local-6989586621679323793"><span id="local-6989586621679323795"><span id="local-6989586621679323797"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#WasmClosure"><span class="hs-identifier hs-type">WasmClosure</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-53"></span><span>
+</span><span id="line-54"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-type">Callback</span></a></span><span>
+</span><span id="line-55"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323781"><span id="local-6989586621679323783"><span id="local-6989586621679323785"><span id="local-6989586621679323787"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#Callback"><span class="hs-identifier hs-type">Callback</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-56"></span><span>
+</span><span id="line-57"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-type">MethodCall</span></a></span><span>
+</span><span id="line-58"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323771"><span id="local-6989586621679323773"><span id="local-6989586621679323775"><span id="local-6989586621679323777"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#MethodCall"><span class="hs-identifier hs-type">MethodCall</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-59"></span><span>
+</span><span id="line-60"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PInstance"><span class="hs-identifier hs-type">PInstance</span></a></span><span>
+</span><span id="line-61"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323761"><span id="local-6989586621679323763"><span id="local-6989586621679323765"><span id="local-6989586621679323767"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PInstance"><span class="hs-identifier hs-type">PInstance</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-62"></span><span>
+</span><span id="line-63"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PModuleInst"><span class="hs-identifier hs-type">PModuleInst</span></a></span><span>
+</span><span id="line-64"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323751"><span id="local-6989586621679323753"><span id="local-6989586621679323755"><span id="local-6989586621679323757"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Wasm.Winter.Persist.html#PModuleInst"><span class="hs-identifier hs-type">PModuleInst</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-65"></span><span>
+</span><span id="line-66"></span><span id="local-6989586621679323750"><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-type">Snapshot</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679323750"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-67"></span><span id="local-6989586621679323747"><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323739"><span id="local-6989586621679323741"><span id="local-6989586621679323743"><span id="local-6989586621679323745"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="#local-6989586621679323747"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Purify.html#Snapshot"><span class="hs-identifier hs-type">Snapshot</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679323747"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span></span></span></span></span><span> </span><span class="hs-keyword">where</span></span><span>
+</span><span id="line-68"></span><span>
+</span><span id="line-69"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#IC"><span class="hs-identifier hs-type">IC</span></a></span><span>
+</span><span id="line-70"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323729"><span id="local-6989586621679323731"><span id="local-6989586621679323733"><span id="local-6989586621679323735"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#IC"><span class="hs-identifier hs-type">IC</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-71"></span><span>
+</span><span id="line-72"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallContext"><span class="hs-identifier hs-type">CallContext</span></a></span><span>
+</span><span id="line-73"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323719"><span id="local-6989586621679323721"><span id="local-6989586621679323723"><span id="local-6989586621679323725"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallContext"><span class="hs-identifier hs-type">CallContext</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-74"></span><span>
+</span><span id="line-75"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#Message"><span class="hs-identifier hs-type">Message</span></a></span><span>
+</span><span id="line-76"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323709"><span id="local-6989586621679323711"><span id="local-6989586621679323713"><span id="local-6989586621679323715"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#Message"><span class="hs-identifier hs-type">Message</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-77"></span><span>
+</span><span id="line-78"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RequestStatus"><span class="hs-identifier hs-type">RequestStatus</span></a></span><span>
+</span><span id="line-79"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323699"><span id="local-6989586621679323701"><span id="local-6989586621679323703"><span id="local-6989586621679323705"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RequestStatus"><span class="hs-identifier hs-type">RequestStatus</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-80"></span><span>
+</span><span id="line-81"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallResponse"><span class="hs-identifier hs-type">CallResponse</span></a></span><span>
+</span><span id="line-82"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323689"><span id="local-6989586621679323691"><span id="local-6989586621679323693"><span id="local-6989586621679323695"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallResponse"><span class="hs-identifier hs-type">CallResponse</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-83"></span><span>
+</span><span id="line-84"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallRequest"><span class="hs-identifier hs-type">CallRequest</span></a></span><span>
+</span><span id="line-85"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323679"><span id="local-6989586621679323681"><span id="local-6989586621679323683"><span id="local-6989586621679323685"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallRequest"><span class="hs-identifier hs-type">CallRequest</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-86"></span><span>
+</span><span id="line-87"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RunStatus"><span class="hs-identifier hs-type">RunStatus</span></a></span><span>
+</span><span id="line-88"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323669"><span id="local-6989586621679323671"><span id="local-6989586621679323673"><span id="local-6989586621679323675"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#RunStatus"><span class="hs-identifier hs-type">RunStatus</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-89"></span><span>
+</span><span id="line-90"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanState"><span class="hs-identifier hs-type">CanState</span></a></span><span>
+</span><span id="line-91"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323659"><span id="local-6989586621679323661"><span id="local-6989586621679323663"><span id="local-6989586621679323665"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanState"><span class="hs-identifier hs-type">CanState</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-92"></span><span>
+</span><span id="line-93"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallOrigin"><span class="hs-identifier hs-type">CallOrigin</span></a></span><span>
+</span><span id="line-94"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323649"><span id="local-6989586621679323651"><span id="local-6989586621679323653"><span id="local-6989586621679323655"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CallOrigin"><span class="hs-identifier hs-type">CallOrigin</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-95"></span><span>
+</span><span id="line-96"></span><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Generic</span></span><span> </span><span class="annot"><a href="IC.Ref.html#EntryPoint"><span class="hs-identifier hs-type">EntryPoint</span></a></span><span>
+</span><span id="line-97"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323639"><span id="local-6989586621679323641"><span id="local-6989586621679323643"><span id="local-6989586621679323645"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#EntryPoint"><span class="hs-identifier hs-type">EntryPoint</span></a></span></span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-98"></span><span>
+</span><span id="line-99"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323633"><span id="local-6989586621679323635"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Ref.html#CanisterContent"><span class="hs-identifier hs-type">CanisterContent</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-100"></span><span>    </span><span id="local-6989586621679323632"><span class="annot"><span class="annottext">encode :: CanisterContent -&gt; Encoding
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">encode</span></span></span><span> </span><span id="local-6989586621679323630"><span class="annot"><span class="annottext">cc :: CanisterContent
+</span><a href="#local-6989586621679323630"><span class="hs-identifier hs-var">cc</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(Blob, PInstance, Blob) -&gt; Encoding
+forall a. Serialise a =&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">encode</span></span><span>
+</span><span id="line-101"></span><span>        </span><span class="hs-special">(</span><span> </span><span class="annot"><span class="annottext">CanisterModule -&gt; Blob
+</span><a href="IC.Canister.html#raw_wasm"><span class="hs-identifier hs-var hs-var">raw_wasm</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CanisterContent -&gt; CanisterModule
+</span><a href="IC.Ref.html#can_mod"><span class="hs-identifier hs-var hs-var">can_mod</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterContent
+</span><a href="#local-6989586621679323630"><span class="hs-identifier hs-var">cc</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-102"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">CanisterSnapshot -&gt; PInstance
+</span><a href="IC.Canister.Snapshot.html#wsInstances"><span class="hs-identifier hs-var hs-var">wsInstances</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CanisterContent -&gt; CanisterSnapshot
+</span><a href="IC.Ref.html#wasm_state"><span class="hs-identifier hs-var hs-var">wasm_state</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterContent
+</span><a href="#local-6989586621679323630"><span class="hs-identifier hs-var">cc</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-103"></span><span>        </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">CanisterSnapshot -&gt; Blob
+</span><a href="IC.Canister.Snapshot.html#wsStableMem"><span class="hs-identifier hs-var hs-var">wsStableMem</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">CanisterContent -&gt; CanisterSnapshot
+</span><a href="IC.Ref.html#wasm_state"><span class="hs-identifier hs-var hs-var">wasm_state</span></a></span><span> </span><span class="annot"><span class="annottext">CanisterContent
+</span><a href="#local-6989586621679323630"><span class="hs-identifier hs-var">cc</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-104"></span><span>        </span><span class="hs-special">)</span><span>
+</span><span id="line-105"></span><span>    </span><span id="local-6989586621679323624"><span class="annot"><span class="annottext">decode :: Decoder s CanisterContent
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var">decode</span></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-106"></span><span>        </span><span class="hs-special">(</span><span id="local-6989586621679323622"><span class="annot"><span class="annottext">wasm :: Blob
+</span><a href="#local-6989586621679323622"><span class="hs-identifier hs-var">wasm</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679323621"><span class="annot"><span class="annottext">insts :: PInstance
+</span><a href="#local-6989586621679323621"><span class="hs-identifier hs-var">insts</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679323620"><span class="annot"><span class="annottext">sm :: Blob
+</span><a href="#local-6989586621679323620"><span class="hs-identifier hs-var">sm</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Decoder s (Blob, PInstance, Blob)
+forall a s. Serialise a =&gt; Decoder s a
+</span><span class="hs-identifier hs-var">decode</span></span><span>
+</span><span id="line-107"></span><span>        </span><span id="local-6989586621679323619"><span class="annot"><span class="annottext">CanisterModule
+</span><a href="#local-6989586621679323619"><span class="hs-identifier hs-var">can_mod</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(String -&gt; Decoder s CanisterModule)
+-&gt; (CanisterModule -&gt; Decoder s CanisterModule)
+-&gt; Either String CanisterModule
+-&gt; Decoder s CanisterModule
+forall a c b. (a -&gt; c) -&gt; (b -&gt; c) -&gt; Either a b -&gt; c
+</span><span class="hs-identifier hs-var">either</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Decoder s CanisterModule
+forall (m :: * -&gt; *) a. MonadFail m =&gt; String -&gt; m a
+</span><span class="hs-identifier hs-var">fail</span></span><span> </span><span class="annot"><span class="annottext">CanisterModule -&gt; Decoder s CanisterModule
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><span class="hs-identifier hs-var">pure</span></span><span> </span><span class="annot"><span class="annottext">(Either String CanisterModule -&gt; Decoder s CanisterModule)
+-&gt; Either String CanisterModule -&gt; Decoder s CanisterModule
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Either String CanisterModule
+</span><a href="IC.Canister.html#parseCanister"><span class="hs-identifier hs-var">parseCanister</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679323622"><span class="hs-identifier hs-var">wasm</span></a></span><span>
+</span><span id="line-108"></span><span>        </span><span class="hs-comment">-- There is some duplication here</span><span>
+</span><span id="line-109"></span><span>        </span><span id="local-6989586621679323616"><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679323616"><span class="hs-identifier hs-var">wasm_mod</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(String -&gt; Decoder s Module)
+-&gt; (Module -&gt; Decoder s Module)
+-&gt; Either String Module
+-&gt; Decoder s Module
+forall a c b. (a -&gt; c) -&gt; (b -&gt; c) -&gt; Either a b -&gt; c
+</span><span class="hs-identifier hs-var">either</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Decoder s Module
+forall (m :: * -&gt; *) a. MonadFail m =&gt; String -&gt; m a
+</span><span class="hs-identifier hs-var">fail</span></span><span> </span><span class="annot"><span class="annottext">Module -&gt; Decoder s Module
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><span class="hs-identifier hs-var">pure</span></span><span> </span><span class="annot"><span class="annottext">(Either String Module -&gt; Decoder s Module)
+-&gt; Either String Module -&gt; Decoder s Module
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Blob -&gt; Either String Module
+</span><a href="IC.Wasm.Winter.html#parseModule"><span class="hs-identifier hs-var">W.parseModule</span></a></span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679323622"><span class="hs-identifier hs-var">wasm</span></a></span><span>
+</span><span id="line-110"></span><span>        </span><span class="annot"><span class="annottext">CanisterContent -&gt; Decoder s CanisterContent
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><span class="hs-identifier hs-var">return</span></span><span> </span><span class="annot"><span class="annottext">(CanisterContent -&gt; Decoder s CanisterContent)
+-&gt; CanisterContent -&gt; Decoder s CanisterContent
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">CanisterContent :: CanisterModule -&gt; CanisterSnapshot -&gt; CanisterContent
+</span><a href="IC.Ref.html#CanisterContent"><span class="hs-identifier hs-type hs-type">CanisterContent</span></a></span><span>
+</span><span id="line-111"></span><span>            </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">can_mod :: CanisterModule
+</span><a href="IC.Ref.html#can_mod"><span class="hs-identifier hs-var">can_mod</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">CanisterModule
+</span><a href="#local-6989586621679323619"><span class="hs-identifier hs-var">can_mod</span></a></span><span>
+</span><span id="line-112"></span><span>            </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">wasm_state :: CanisterSnapshot
+</span><a href="IC.Ref.html#wasm_state"><span class="hs-identifier hs-var">wasm_state</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">CanisterSnapshot :: Module -&gt; PInstance -&gt; Blob -&gt; CanisterSnapshot
+</span><a href="IC.Canister.Snapshot.html#CanisterSnapshot"><span class="hs-identifier hs-type hs-type">CanisterSnapshot</span></a></span><span>
+</span><span id="line-113"></span><span>                </span><span class="hs-special">{</span><span> </span><span class="annot"><span class="annottext">wsModule :: Module
+</span><a href="#local-6989586621679323610"><span class="hs-identifier hs-var">wsModule</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Module
+</span><a href="#local-6989586621679323616"><span class="hs-identifier hs-var">wasm_mod</span></a></span><span>
+</span><span id="line-114"></span><span>                </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">wsInstances :: PInstance
+</span><a href="IC.Canister.Snapshot.html#wsInstances"><span class="hs-identifier hs-var">wsInstances</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">PInstance
+</span><a href="#local-6989586621679323621"><span class="hs-identifier hs-var">insts</span></a></span><span>
+</span><span id="line-115"></span><span>                </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">wsStableMem :: Blob
+</span><a href="IC.Canister.Snapshot.html#wsStableMem"><span class="hs-identifier hs-var">wsStableMem</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Blob
+</span><a href="#local-6989586621679323620"><span class="hs-identifier hs-var">sm</span></a></span><span>
+</span><span id="line-116"></span><span>                </span><span class="hs-special">}</span><span>
+</span><span id="line-117"></span><span>            </span><span class="hs-special">}</span><span>
+</span><span id="line-118"></span><span>
+</span><span id="line-119"></span><span id="local-6989586621679323602"><span id="local-6989586621679323604"><span id="local-6989586621679323606"><span id="local-6989586621679323608"><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Types.html#EntityId"><span class="hs-identifier hs-type">EntityId</span></a></span></span></span></span></span><span>
+</span><span id="line-120"></span><span>
+</span><span id="line-121"></span><span id="local-6989586621679323594"><span id="local-6989586621679323596"><span id="local-6989586621679323598"><span id="local-6989586621679323600"><span class="hs-keyword">deriving</span><span> </span><span class="hs-keyword">instance</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">StdGen</span></span></span></span></span></span><span>
+</span><span id="line-122"></span><span>
+</span><span id="line-123"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323588"><span id="local-6989586621679323590"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">SMGen</span></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-124"></span><span>    </span><span id="local-6989586621679323587"><span class="annot"><span class="annottext">encode :: SMGen -&gt; Encoding
+</span><a href="#local-6989586621679323587"><span class="hs-identifier hs-var hs-var hs-var hs-var">encode</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(Word64, Word64) -&gt; Encoding
+forall a. Serialise a =&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">encode</span></span><span>  </span><span class="annot"><span class="annottext">((Word64, Word64) -&gt; Encoding)
+-&gt; (SMGen -&gt; (Word64, Word64)) -&gt; SMGen -&gt; Encoding
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">SMGen -&gt; (Word64, Word64)
+</span><span class="hs-identifier hs-var">unseedSMGen</span></span><span>
+</span><span id="line-125"></span><span>    </span><span id="local-6989586621679323584"><span class="annot"><span class="annottext">decode :: Decoder s SMGen
+</span><a href="#local-6989586621679323584"><span class="hs-identifier hs-var hs-var hs-var hs-var">decode</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(Word64, Word64) -&gt; SMGen
+</span><span class="hs-identifier hs-var">seedSMGen'</span></span><span> </span><span class="annot"><span class="annottext">((Word64, Word64) -&gt; SMGen)
+-&gt; Decoder s (Word64, Word64) -&gt; Decoder s SMGen
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Decoder s (Word64, Word64)
+forall a s. Serialise a =&gt; Decoder s a
+</span><span class="hs-identifier hs-var">decode</span></span><span>
+</span><span id="line-126"></span><span>
+</span><span id="line-127"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323574"><span id="local-6989586621679323576"><span id="local-6989586621679323578"><span id="local-6989586621679323580"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Crypto.BLS.html#SecretKey"><span class="hs-identifier hs-type">BLS.SecretKey</span></a></span></span></span></span></span><span>
+</span><span id="line-128"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679323568"><span id="local-6989586621679323570"><span class="annot"><span class="hs-identifier hs-type">Serialise</span></span><span> </span><span class="annot"><a href="IC.Crypto.html#SecretKey"><span class="hs-identifier hs-type">SecretKey</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-129"></span><span>    </span><span id="local-6989586621679323567"><span class="annot"><span class="annottext">encode :: SecretKey -&gt; Encoding
+</span><a href="#local-6989586621679323567"><span class="hs-identifier hs-var hs-var hs-var hs-var">encode</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="IC.Crypto.html#BLS"><span class="hs-identifier hs-type">BLS</span></a></span><span> </span><span id="local-6989586621679323565"><span class="annot"><span class="annottext">sk :: SecretKey
+</span><a href="#local-6989586621679323565"><span class="hs-identifier hs-var">sk</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">SecretKey -&gt; Encoding
+forall a. Serialise a =&gt; a -&gt; Encoding
+</span><span class="hs-identifier hs-var">encode</span></span><span> </span><span class="annot"><span class="annottext">SecretKey
+</span><a href="#local-6989586621679323565"><span class="hs-identifier hs-var">sk</span></a></span><span>
+</span><span id="line-130"></span><span>    </span><span class="annot"><span class="hs-identifier hs-var">encode</span></span><span> </span><span class="hs-identifier">_</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">String -&gt; Encoding
+forall a. HasCallStack =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="hs-string">&quot;IC.Serialise SecretKey: Only BLS supported&quot;</span></span><span>
+</span><span id="line-131"></span><span>    </span><span id="local-6989586621679323563"><span class="annot"><span class="annottext">decode :: Decoder s SecretKey
+</span><a href="#local-6989586621679323563"><span class="hs-identifier hs-var hs-var hs-var hs-var">decode</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">SecretKey -&gt; SecretKey
+</span><a href="IC.Crypto.html#BLS"><span class="hs-identifier hs-var">BLS</span></a></span><span> </span><span class="annot"><span class="annottext">(SecretKey -&gt; SecretKey)
+-&gt; Decoder s SecretKey -&gt; Decoder s SecretKey
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">Decoder s SecretKey
+forall a s. Serialise a =&gt; Decoder s a
+</span><span class="hs-identifier hs-var">decode</span></span><span>
+</span><span id="line-132"></span></pre></body></html>
